@@ -1,0 +1,20 @@
+{
+  "name": "bot",
+  "version": "1.0.0",
+  "description": "le bot du turfu",
+  "main": "index.js",
+  "scripts": {
+    "test": "prefix"
+  },
+  "author": "buygen R4Z#4676",
+  "license": "ISC",
+  "dependencies": {
+    "config.json": "0.0.4",
+    "discord.js": "^11.5.1",
+    "fs": "0.0.1-security",
+    "if": "^2.0.0",
+    "moment": "^2.24.0",
+    "nodejs": "0.0.0",
+    "nodemon": "^1.19.1"
+  }
+}
