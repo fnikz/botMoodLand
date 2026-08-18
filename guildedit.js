@@ -3,66 +3,76 @@ const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js'
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('guildedit')
-		.setDescription('Edit guild sheet fields')
+		.setDescription('Modifier les champs de la fiche guilde')
 		.addStringOption(option =>
-			option.setName('field')
-				.setDescription('Field to edit')
+			option.setName('champ')
+				.setDescription('Champ à modifier')
 				.setRequired(true)
 				.addChoices(
-					{ name: 'Description', value: 'Description' },
-					{ name: 'Recrutement', value: 'Recrutement' },
-					{ name: 'Base principale', value: 'Base principale' },
-					{ name: 'Avant-poste', value: 'Avant-poste' },
-					{ name: 'Objectifs', value: 'Objectifs' }
+					{ name: 'Description', value: 'description' },
+					{ name: 'Recrutement', value: 'recrutement' },
+					{ name: 'Base principale', value: 'baseprincipale' },
+					{ name: 'Avant-poste', value: 'avantposte' },
+					{ name: 'Objectifs', value: 'objectifs' }
 				))
 		.addStringOption(option =>
-			option.setName('content')
-				.setDescription('New content for the field')
+			option.setName('valeur')
+				.setDescription('Nouvelle valeur du champ')
 				.setRequired(true)),
 	async execute(interaction) {
-		// Check if command is used in a guild channel
+		// Vérifier que la commande est utilisée dans un channel guild
 		if (!interaction.channel) {
 			return interaction.reply({
-				content: 'This command can only be used in a guild channel.',
+				content: 'Cette commande ne peut être utilisée que dans un channel de guilde.',
 				flags: MessageFlags.Ephemeral
 			});
 		}
 
-		// Get channel topic and verify it starts with JEWORLD_GUILD:
+		// Récupérer le topic du channel et vérifier qu'il commence par JEWORLD_GUILD:
 		const topic = interaction.channel.topic || '';
 		if (!topic.startsWith('JEWORLD_GUILD:')) {
 			return interaction.reply({
-				content: 'This channel is not configured as a guild sheet channel.',
+				content: 'Ce channel n\'est pas configuré comme channel de fiche guilde.',
 				flags: MessageFlags.Ephemeral
 			});
 		}
 
-		// Extract creator ID from topic (format: JEWORLD_GUILD:creatorID)
+		// Extraire l'ID du créateur du topic (format: JEWORLD_GUILD:creatorID)
 		const creatorId = topic.split(':')[1]?.trim();
 		if (!creatorId) {
 			return interaction.reply({
-				content: 'Guild creator ID not found in channel topic.',
+				content: 'L\'ID du créateur de la guilde n\'a pas été trouvé dans le topic.',
 				flags: MessageFlags.Ephemeral
 			});
 		}
 
-		// Check if user is the creator
+		// Vérifier que l'utilisateur est le créateur
 		if (interaction.user.id !== creatorId) {
 			return interaction.reply({
-				content: 'Only the guild creator can edit this sheet.',
+				content: 'Seul le créateur de la guilde peut modifier cette fiche.',
 				flags: MessageFlags.Ephemeral
 			});
 		}
 
-		const field = interaction.options.getString('field');
-		const content = interaction.options.getString('content');
+		const champ = interaction.options.getString('champ');
+		const valeur = interaction.options.getString('valeur');
 
-		// Defer the reply to give time to fetch messages
+		// Déterminer le nom du champ réel et s'il est inline
+		const fieldMapping = {
+			description: { name: '📝 Description', inline: false },
+			recrutement: { inline: false },
+			baseprincipale: { name: '📍 Base principale', inline: true },
+			avantposte: { name: '📍 Avant-poste', inline: true },
+			objectifs: { name: '🎯 Objectifs', inline: false }
+		};
+
+		// Différer la réponse pour avoir le temps de récupérer les messages
 		await interaction.deferReply({ ephemeral: true });
 
 		try {
-			// Find the message with the guild sheet embed
+			// Chercher le message avec la fiche guilde
 			let targetMessage = null;
+			let embedFooter = null;
 			let messages = await interaction.channel.messages.fetch({ limit: 100 });
 
 			for (const [, message] of messages) {
@@ -71,6 +81,7 @@ module.exports = {
 					const footer = embed.footer?.text || '';
 					if (footer === 'JeWorld • Fiche Guilde' || footer === 'JeWorld • Espace Solo') {
 						targetMessage = message;
+						embedFooter = footer;
 						break;
 					}
 				}
@@ -78,43 +89,55 @@ module.exports = {
 
 			if (!targetMessage) {
 				return interaction.editReply({
-					content: 'Could not find the guild sheet embed in this channel.'
+					content: 'Impossible de trouver la fiche guilde dans ce channel.'
 				});
 			}
 
-			// Get the current embed and modify it
+			// Récupérer l'embed courant et le modifier
 			const originalEmbed = targetMessage.embeds[0];
 			const newEmbed = EmbedBuilder.from(originalEmbed);
 
-			// Update the specified field
+			// Déterminer le nom du champ
+			let fieldName = fieldMapping[champ].name;
+			if (champ === 'recrutement') {
+				fieldName = embedFooter === 'JeWorld • Espace Solo' ? '🤝 Recrutement' : '📌 Recrutement';
+			}
+
+			// Récupérer les champs existants
 			const fields = newEmbed.data.fields || [];
 			let fieldFound = false;
 
+			// Chercher et mettre à jour le champ s'il existe
 			for (let i = 0; i < fields.length; i++) {
-				if (fields[i].name === field) {
-					fields[i].value = content;
+				if (fields[i].name === fieldName) {
+					fields[i].value = valeur;
 					fieldFound = true;
 					break;
 				}
 			}
 
-			// If field doesn't exist, add it
+			// Si le champ n'existe pas, l'ajouter
 			if (!fieldFound) {
-				newEmbed.addFields({ name: field, value: content, inline: false });
-			} else {
-				newEmbed.setFields(fields);
+				fields.push({
+					name: fieldName,
+					value: valeur,
+					inline: fieldMapping[champ].inline
+				});
 			}
 
-			// Edit the message with the updated embed
+			// Appliquer les champs modifiés
+			newEmbed.setFields(fields);
+
+			// Éditer le message avec l'embed modifié
 			await targetMessage.edit({ embeds: [newEmbed] });
 
 			return interaction.editReply({
-				content: `✅ Field "${field}" has been updated successfully.`
+				content: `✅ Le champ "${fieldName}" a été modifié avec succès.`
 			});
 		} catch (error) {
-			console.error('Error updating guild sheet:', error);
+			console.error('Erreur lors de la mise à jour de la fiche guilde:', error);
 			return interaction.editReply({
-				content: 'An error occurred while updating the guild sheet.'
+				content: 'Une erreur s\'est produite lors de la mise à jour de la fiche guilde.'
 			});
 		}
 	}
